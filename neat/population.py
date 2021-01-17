@@ -1,8 +1,19 @@
 """Implements the core evolution algorithm."""
-from __future__ import print_function
+from __future__ import print_function, annotations
 
+from typing import List, Dict, Set, Tuple, Optional, Callable, TYPE_CHECKING
 from neat.math_util import mean
 from neat.reporting import ReporterSet
+
+if TYPE_CHECKING:
+    from neat.config import Config
+    from neat.stagnation import DefaultStagnation
+    from neat.reproduction import DefaultReproduction
+    from neat.genome import DefaultGenome
+    from neat.species import DefaultSpeciesSet
+    from neat.reporting import BaseReporter
+
+    pass
 
 
 class CompleteExtinctionException(Exception):
@@ -19,13 +30,11 @@ class Population(object):
         5. Go to 1.
     """
 
-    def __init__(self, config, initial_state=None):
-        self.reporters = ReporterSet()
+    def __init__(self, config: Config, initial_state=None):
+        self.reporters: ReporterSet = ReporterSet()
         self.config = config
-        stagnation = config.stagnation_type(config.stagnation_config, self.reporters)
-        self.reproduction = config.reproduction_type(config.reproduction_config,
-                                                     self.reporters,
-                                                     stagnation)
+        stagnation: DefaultStagnation = config.stagnation_type(config.stagnation_config, self.reporters)
+        self.reproduction: DefaultReproduction = config.reproduction_type(config.reproduction_config, self.reporters, stagnation)
         if config.fitness_criterion == 'max':
             self.fitness_criterion = max
         elif config.fitness_criterion == 'min':
@@ -38,24 +47,25 @@ class Population(object):
 
         if initial_state is None:
             # Create a population from scratch, then partition into species.
-            self.population = self.reproduction.create_new(config.genome_type,
-                                                           config.genome_config,
-                                                           config.pop_size)
-            self.species = config.species_set_type(config.species_set_config, self.reporters)
-            self.generation = 0
-            self.species.speciate(config, self.population, self.generation)
+            self.population: Dict[int, DefaultGenome] = self.reproduction.create_new(config.genome_type,
+                                                                                     config.genome_config,
+                                                                                     config.pop_size)
+            self.species_set: DefaultSpeciesSet = config.species_set_type(config.species_set_config, self.reporters)
+            self.generation: int = 0
+            self.species_set.speciate(config, self.population, self.generation)
         else:
-            self.population, self.species, self.generation = initial_state
+            self.population, self.species_set, self.generation = initial_state
 
-        self.best_genome = None
+        self.best_genome: Optional[DefaultGenome] = None
 
-    def add_reporter(self, reporter):
+    def add_reporter(self, reporter: BaseReporter) -> None:
         self.reporters.add(reporter)
 
-    def remove_reporter(self, reporter):
+    def remove_reporter(self, reporter: BaseReporter) -> None:
         self.reporters.remove(reporter)
 
-    def run(self, fitness_function, n=None):
+    def run(self, fitness_function: Callable[[List[Tuple[int, DefaultGenome]], Config], None], n: Optional[int] = None) \
+            -> Optional[DefaultGenome]:
         """
         Runs NEAT's genetic algorithm for at most n generations.  If n
         is None, run until solution is found or extinction occurs.
@@ -78,7 +88,7 @@ class Population(object):
         if self.config.no_fitness_termination and (n is None):
             raise RuntimeError("Cannot have no generational limit with no fitness termination")
 
-        k = 0
+        k: int = 0
         while n is None or k < n:
             k += 1
 
@@ -88,14 +98,16 @@ class Population(object):
             fitness_function(list(self.population.items()), self.config)
 
             # Gather and report statistics.
-            best = None
+            best: Optional[DefaultGenome] = None
+
+            # g = (key, genome)
             for g in self.population.values():
                 if g.fitness is None:
                     raise RuntimeError("Fitness not assigned to genome {}".format(g.key))
 
                 if best is None or g.fitness > best.fitness:
                     best = g
-            self.reporters.post_evaluate(self.config, self.population, self.species, best)
+            self.reporters.post_evaluate(self.config, self.population, self.species_set, best)
 
             # Track the best genome ever seen.
             if self.best_genome is None or best.fitness > self.best_genome.fitness:
@@ -103,17 +115,17 @@ class Population(object):
 
             if not self.config.no_fitness_termination:
                 # End if the fitness threshold is reached.
-                fv = self.fitness_criterion(g.fitness for g in self.population.values())
+                fv: float = self.fitness_criterion(g.fitness for g in self.population.values())
                 if fv >= self.config.fitness_threshold:
                     self.reporters.found_solution(self.config, self.generation, best)
                     break
 
             # Create the next generation from the current generation.
-            self.population = self.reproduction.reproduce(self.config, self.species,
+            self.population = self.reproduction.reproduce(self.config, self.species_set,
                                                           self.config.pop_size, self.generation)
 
             # Check for complete extinction.
-            if not self.species.species:
+            if not self.species_set.species:
                 self.reporters.complete_extinction()
 
                 # If requested by the user, create a completely new population,
@@ -126,9 +138,9 @@ class Population(object):
                     raise CompleteExtinctionException()
 
             # Divide the new population into species.
-            self.species.speciate(self.config, self.population, self.generation)
+            self.species_set.speciate(self.config, self.population, self.generation)
 
-            self.reporters.end_generation(self.config, self.population, self.species)
+            self.reporters.end_generation(self.config, self.population, self.species_set)
 
             self.generation += 1
 

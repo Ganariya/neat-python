@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='ganariya-neats',
-    version='0.1.2',
+    version='0.2.0',
     author='cesar.gomes, mirrorballu2, ganariya',
     author_email='nobody@nowhere.com',
     maintainer='CodeReclaimers, LLC, ganariya',

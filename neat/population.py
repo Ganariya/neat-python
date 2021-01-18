@@ -95,12 +95,14 @@ class Population(object):
             self.reporters.start_generation(self.generation)
 
             # Evaluate all genomes using the user-provided function.
+            # すべてのゲノムの適応度を計算する
             fitness_function(list(self.population.items()), self.config)
 
             # Gather and report statistics.
+            # k世代目の最も最適な個体を保存する
             best: Optional[DefaultGenome] = None
 
-            # g = (key, genome)
+            # g = genome
             for g in self.population.values():
                 if g.fitness is None:
                     raise RuntimeError("Fitness not assigned to genome {}".format(g.key))
@@ -110,9 +112,11 @@ class Population(object):
             self.reporters.post_evaluate(self.config, self.population, self.species_set, best)
 
             # Track the best genome ever seen.
+            # [1, k]世代目の最適な個体を保存する
             if self.best_genome is None or best.fitness > self.best_genome.fitness:
                 self.best_genome = best
 
+            # 適応度が超えれば終了する条件
             if not self.config.no_fitness_termination:
                 # End if the fitness threshold is reached.
                 fv: float = self.fitness_criterion(g.fitness for g in self.population.values())
@@ -121,10 +125,19 @@ class Population(object):
                     break
 
             # Create the next generation from the current generation.
+            # 今の世代kを用いて次の世代k+1を作成する
+            # stagnantか調べる -> stagnantなら次に残さない
+            # 生き残りの種の個体数から　次の個体数の割合を決定
+            # 上位エリートはそのまま残す
+            # あとは各種の残りから　上位を交配させながら突然変異させる
+            # ただし、ここで種は一度消す -> populationというFlatな配列にさせる
+            # また、個体数の割合が決定されて生成されるが、どの種に割り振られるかはspeciateで決まる　（そのため、全く異なるものになるかもしれない）
+            # （種に分けるのは次のspeciateメソッド）
             self.population = self.reproduction.reproduce(self.config, self.species_set,
                                                           self.config.pop_size, self.generation)
 
             # Check for complete extinction.
+            # すべての種が死んでしまったら
             if not self.species_set.species:
                 self.reporters.complete_extinction()
 
@@ -138,6 +151,9 @@ class Population(object):
                     raise CompleteExtinctionException()
 
             # Divide the new population into species.
+            # 新しいk+1世代の個体たちを新しい種に入れる
+            # 最初に種の代表を、前の代表者に一番似ている新しいものにする
+            # 次に新しい代表者に合わせてpopulationの個体たちを割り振っていく
             self.species_set.speciate(self.config, self.population, self.generation)
 
             self.reporters.end_generation(self.config, self.population, self.species_set)

@@ -97,6 +97,9 @@ class DefaultReproduction(DefaultClassConfig):
         """
         Handles creation of genomes, either from scratch or by sexual or
         asexual reproduction from parents.
+
+        k世代目からk+1世代目のFlatな配列を作成する
+        まだ種には入れていないっぽい
         """
         # TODO: I don't like this modification of the species and stagnation objects,
         # because it requires internal knowledge of the objects.
@@ -106,18 +109,24 @@ class DefaultReproduction(DefaultClassConfig):
         # The average adjusted fitness scheme (normalized to the interval
         # [0, 1]) allows the use of negative fitness values without
         # interfering with the shared fitness scheme.
+
+        # 生き残る世代のすべての個体を配列にflat
         all_fitnesses: List[float] = []
+
+        # 生き残る種
         remaining_species: List[Species] = []
         for stag_sid, stag_s, stagnant in self.stagnation.update(species_set, generation):
             if stagnant:
+                # stagnantなら死んだことを伝える
                 self.reporters.species_stagnant(stag_sid, stag_s)
             else:
+                # 次の世代へ生き残らせる
                 all_fitnesses.extend(m.fitness for m in stag_s.members.values())
                 remaining_species.append(stag_s)
         # The above comment was not quite what was happening - now getting fitnesses
         # only from members of non-stagnated species.
 
-        # No species left.
+        # No species left.　すべての種が同時に死んだ場合
         if not remaining_species:
             species_set.species = {}
             return {}  # was []
@@ -128,13 +137,15 @@ class DefaultReproduction(DefaultClassConfig):
         max_fitness: float = max(all_fitnesses)
         # Do not allow the fitness range to be zero, as we divide by it below.
         # TODO: The ``1.0`` below is rather arbitrary, and should be configurable.
+        # 生き残った種で最小と最大の平均適応度の幅を計算して正規化する
         fitness_range: float = max(1.0, max_fitness - min_fitness)
-        for afs in remaining_species:
+        for rs in remaining_species:
             # Compute adjusted fitness.
-            msf: float = mean([m.fitness for m in afs.members.values()])
+            msf: float = mean([m.fitness for m in rs.members.values()])
             af: float = (msf - min_fitness) / fitness_range
-            afs.adjusted_fitness = af
+            rs.adjusted_fitness = af
 
+        # 各種の調整された平均適応度
         adjusted_fitnesses: List[float] = [s.adjusted_fitness for s in remaining_species]
         avg_adjusted_fitness: float = mean(adjusted_fitnesses)
         self.reporters.info("Average adjusted fitness: {:.3f}".format(avg_adjusted_fitness))
@@ -146,10 +157,15 @@ class DefaultReproduction(DefaultClassConfig):
         # self.reproduction_config.elitism)? That would probably produce more accurate tracking
         # of population sizes and relative fitnesses... doing. TODO: document.
         min_species_size: int = max(min_species_size, self.reproduction_config.elitism)
+
+        # 新しい世代の各種の個体数を計算する（個体はまだ生成してない　数だけ）
         spawn_amounts: List[int] = self.compute_spawn(adjusted_fitnesses, previous_sizes,
                                                       pop_size, min_species_size)
 
+        # k+1世代目のFlatな個体たち
         new_population: Dict[int, DefaultGenome] = {}
+
+        # k + 1世代目の各種
         species_set.species = {}
         for spawn, s in zip(spawn_amounts, remaining_species):
             # If elitism is enabled, each species always at least gets to retain its elites.
@@ -166,22 +182,29 @@ class DefaultReproduction(DefaultClassConfig):
             old_members.sort(reverse=True, key=lambda x: x[1].fitness)
 
             # Transfer elites to new generation.
+            # 強い個体はそのまま次の種に残す
+            # またこのとき、まだ新しい種に直接は入れてないっぽい（flatな個体配列に入れているだけ）
             if self.reproduction_config.elitism > 0:
-                for i, m in old_members[:self.reproduction_config.elitism]:
-                    new_population[i] = m
+                for gid, genome in old_members[:self.reproduction_config.elitism]:
+                    new_population[gid] = genome
                     spawn -= 1
 
             if spawn <= 0:
                 continue
 
             # Only use the survival threshold fraction to use as parents for the next generation.
+            # 交配で使う親の数
             repro_cutoff: int = int(math.ceil(self.reproduction_config.survival_threshold *
                                               len(old_members)))
             # Use at least two parents no matter what the threshold fraction result is.
             repro_cutoff: int = max(repro_cutoff, 2)
+
+            # 上位repro_cutoff体だけ　個体を取り出して親候補にする
             old_members: List[Tuple[int, DefaultGenome]] = old_members[:repro_cutoff]
 
             # Randomly choose parents and produce the number of offspring allotted to the species.
+            # 親を取り出してランダムに交配させる
+            # ただここではまだ種に追加していないっぽい
             while spawn > 0:
                 spawn -= 1
 
@@ -193,6 +216,7 @@ class DefaultReproduction(DefaultClassConfig):
                 gid: int = next(self.genome_indexer)
                 child: DefaultGenome = config.genome_type(gid)
                 child.configure_crossover(parent1, parent2, config.genome_config)
+                # 突然変異
                 child.mutate(config.genome_config)
                 new_population[gid] = child
                 self.ancestors[gid] = (parent1_id, parent2_id)

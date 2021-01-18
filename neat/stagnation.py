@@ -44,6 +44,9 @@ class DefaultStagnation(DefaultClassConfig):
         species_elitism parameter if they were removed,
         in which case the highest-fitness species are spared -
         returns a list with stagnant species marked for removal.
+
+        k世代目の各種ごとの適応度を計算する (adjusted_fitness=None)とする
+        そして、k世代目の各種がStagnantかを調べてメンバーに入れる
         """
         species_data: List[Tuple[int, Species]] = []
         # sid = id
@@ -63,8 +66,10 @@ class DefaultStagnation(DefaultClassConfig):
             species_data.append((sid, s))
 
         # Sort in ascending fitness order.
+        # 後ろのほうが性能がいい種
         species_data.sort(key=lambda x: x[1].fitness)
 
+        # 種sがstagnantかどうか (stagnantなら滅ぼすことを検討しないといけない...)
         result: List[Tuple[int, Species, bool]] = []
         species_fitnesses: List[float] = []
         num_non_stagnant: int = len(species_data)
@@ -78,6 +83,7 @@ class DefaultStagnation(DefaultClassConfig):
             if num_non_stagnant > self.stagnation_config.species_elitism:
                 is_stagnant = stagnant_time >= self.stagnation_config.max_stagnation
 
+            # エリートの種は残す
             if (len(species_data) - idx) <= self.stagnation_config.species_elitism:
                 is_stagnant = False
 

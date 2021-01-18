@@ -420,16 +420,23 @@ class DefaultGenome(object):
         node_distance: float = 0.0
         if self.nodes or other.nodes:
             disjoint_nodes: int = 0
+
+            # k2がother.nodes(ノード遺伝子)の各ノード遺伝子のKey
+            # genomeに含まれるすべてのノード遺伝子を試している
             for k2 in other.nodes:
                 if k2 not in self.nodes:
                     disjoint_nodes += 1
 
+            # k1=遺伝子のキー, n1=ノード
             for k1, n1 in self.nodes.items():
                 n2: Optional[DefaultNodeGene] = other.nodes.get(k1)
                 if n2 is None:
                     disjoint_nodes += 1
                 else:
                     # Homologous genes compute their own distance value.
+                    # gene同士の比較
+                    # もし一致しているノード遺伝子番号ならば　その重みを計算する
+                    # つまり遺伝子同士の重みの差
                     node_distance += n1.distance(n2, config)
 
             max_nodes: int = max(len(self.nodes), len(other.nodes))
@@ -438,6 +445,7 @@ class DefaultGenome(object):
                                      disjoint_nodes)) / max_nodes
 
         # Compute connection gene differences.
+        # 辺遺伝子の距離
         connection_distance: float = 0.0
         if self.connections or other.connections:
             disjoint_connections: int = 0
@@ -458,7 +466,14 @@ class DefaultGenome(object):
                                           (config.compatibility_disjoint_coefficient *
                                            disjoint_connections)) / max_conn
 
-        distance = node_distance + connection_distance
+        # play_distance
+        play_distance: float = 0
+        if hasattr(self, 'cluster_id') and hasattr(other, 'cluster_id'):
+            play_distance = int(self.cluster_id != other.cluster_id)
+        if hasattr(self, 'cluster_c'):
+            play_distance *= self.cluster_c
+
+        distance = node_distance + connection_distance + play_distance
         return distance
 
     def size(self) -> Tuple[int, int]:

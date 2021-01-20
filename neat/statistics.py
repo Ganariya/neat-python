@@ -27,33 +27,44 @@ class StatisticsReporter(BaseReporter):
 
     def __init__(self):
         BaseReporter.__init__(self)
+        # i世代目の最も良い個体
         self.most_fit_genomes: List[DefaultGenome] = []
-        self.generation_statistics: List[Dict[int, Dict[int, int]]] = []
+        # generation_statistics[i] = i世代目におけるX
+        # X = {種sid: {個体id: 適応度}}
+        self.generation_statistics: List[Dict[int, Dict[int, float]]] = []
 
     def post_evaluate(self, config: Config, population: Dict[int, DefaultGenome], species_set: DefaultSpeciesSet, best_genome: DefaultGenome) -> None:
         self.most_fit_genomes.append(copy.deepcopy(best_genome))
 
         # Store the fitnesses of the members of each currently active species.
-        species_stats: Dict[int, Dict[int, int]] = {}
+        # ある1世代における　species_stats[sid] = 種sidに含まれる {個体ID: 適応度}
+        species_stats: Dict[int, Dict[int, float]] = {}
         for sid, s in species_set.species.items():
             species_stats[sid] = dict((k, v.fitness) for k, v in s.members.items())
         self.generation_statistics.append(species_stats)
 
     def get_fitness_stat(self, f: Callable) -> List[float]:
         """
-        種ごとに関数fを書けた適応度を返す　４種なら４のリスト
+        各世代ごとの個体全体にFを書けたリストを返す
+        10世代なら10の長さ
         """
         stat: List[float] = []
+        # i世代目のループ
         for stats in self.generation_statistics:
             scores: List[float] = []
+            # すべての種に含まれる個体をFlatにscoresに
             for species_stats in stats.values():
                 scores.extend(species_stats.values())
+            # i世代目のすべての個体のfを入れる
             stat.append(f(scores))
 
         return stat
 
     def get_fitness_mean(self) -> List[float]:
-        """Get the per-generation mean fitness."""
+        """Get the per-generation mean fitness.
+
+        dp[x] = x世代目の全固体の平均適応度
+        """
         return self.get_fitness_stat(mean)
 
     def get_fitness_stdev(self) -> List[float]:
@@ -93,9 +104,7 @@ class StatisticsReporter(BaseReporter):
         self.save_species_count()
         self.save_species_fitness()
 
-    def save_genome_fitness(self,
-                            delimiter: str = ' ',
-                            filename: str = 'fitness_history.csv'):
+    def save_genome_fitness(self, delimiter: str = ' ', filename: str = 'fitness_history.csv'):
         """ Saves the population's best and average fitness. """
         with open(filename, 'w') as f:
             w = csv.writer(f, delimiter=delimiter)
@@ -122,8 +131,12 @@ class StatisticsReporter(BaseReporter):
                 w.writerow(s)
 
     def get_species_sizes(self) -> List[List[int]]:
+        """
+        世代数だけの長さの配列を返す
+        ret[x][sid] = x世代目における種sidに含まれる個体数
+        """
 
-        # おそらくこれまでに出てきた種のIDのセット
+        # 世代全体で出現した種IDセット
         all_species: Set[int] = set()
         for gen_data in self.generation_statistics:
             all_species: Set[int] = all_species.union(gen_data.keys())
@@ -131,7 +144,7 @@ class StatisticsReporter(BaseReporter):
         max_species: int = max(all_species)
 
         # 世代ごとの各種の個体数
-        # species_counts[20][2] = 20世代目における種２の個体数
+        # species_counts[x][sid] = x世代目における種sidの個体数
         species_counts: List[List[int]] = []
         for gen_data in self.generation_statistics:
             species = [len(gen_data.get(sid, [])) for sid in range(1, max_species + 1)]
@@ -140,6 +153,11 @@ class StatisticsReporter(BaseReporter):
         return species_counts
 
     def get_species_fitness(self, null_value: str = '') -> List[List[Union[str, float]]]:
+        """
+        世代数だけの長さの配列を返す
+        ret[x][sid] = x世代目における種sidに含まれる個体全体の平均適応度
+        """
+        # 世代全体で出現した種IDセット
         all_species: Set[int] = set()
         for gen_data in self.generation_statistics:
             all_species: Set[int] = all_species.union(gen_data.keys())
@@ -147,7 +165,7 @@ class StatisticsReporter(BaseReporter):
         max_species: int = max(all_species)
 
         # 各世代における各種の適応度の平均
-        # ある世代で一体も種がないときはNAが入る
+        # species_fitness[x][sid] = x世代目における種sidに含まれる全個体の適応度の平均
         species_fitness: List[List[Union[str, float]]] = []
         for gen_data in self.generation_statistics:
 

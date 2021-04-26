@@ -88,16 +88,14 @@ class Population(object):
         if self.config.no_fitness_termination and (n is None):
             raise RuntimeError("Cannot have no generational limit with no fitness termination")
 
-        # 最初の実行を初期化
-        fitness_function(list(self.population.items()), self.config)
-
         k: int = 0
         while n is None or k < n:
             k += 1
 
             self.reporters.start_generation(self.generation)
 
-            # Gather and report statistics.
+            fitness_function(list(self.population.items()), self.config)
+
             # k世代目の最も最適な個体を保存する
             best: Optional[DefaultGenome] = None
 
@@ -149,11 +147,6 @@ class Population(object):
                 else:
                     raise CompleteExtinctionException()
 
-            # Evaluate all genomes using the user-provided function.
-            # すべてのゲノムの適応度を計算する
-            fitness_function(list(self.population.items()), self.config)
-
-            # Divide the new population into species.
             # 新しいk+1世代の個体たちを新しい種に入れる
             # 最初に種の代表を、前の代表者に一番似ている新しいものにする
             # 次に新しい代表者に合わせてpopulationの個体たちを割り振っていく
